@@ -7,6 +7,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.mapreduce.lib.input.{FileInputFormat, TextInputFormat}
 import org.apache.hadoop.mapreduce.lib.output.{FileOutputFormat, TextOutputFormat}
 import com.typesafe.config.ConfigFactory
+import utils.ShardDriver._
 
 def doWordCount(conf: Job): Unit =
   val job: Job = Job.getInstance(conf.getConfiguration)
@@ -46,5 +47,12 @@ def doWordCount(conf: Job): Unit =
   conf.set("mapreduce.job.reduces", "1")
 
   val job = Job.getInstance(conf)
+  val config = ConfigFactory.load()
+  val baseDir = config.getString("job-conf.base_dir")
+  val inputFilename = config.getString("job-conf.input_filename")
 
+  val numShards = shardFile(baseDir, inputFilename, 17800)
   doWordCount(job)
+
+  cleanupShards(baseDir, inputFilename)
+
