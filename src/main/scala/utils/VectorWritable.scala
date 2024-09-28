@@ -12,7 +12,7 @@ import java.util
 import scala.jdk.CollectionConverters.*
 
 
-class VectorWritable(var values: Array[Float]) extends Writable {
+class VectorWritable(var values: Array[Float]) extends Writable, WritableComparable[VectorWritable] {
   def this() = this(null)
 
   def this(v: Array[Float], startPos: Int = 0, endPos: Int = -1) = {
@@ -41,5 +41,20 @@ class VectorWritable(var values: Array[Float]) extends Writable {
   override def write(out: DataOutput): Unit = {
     out.writeInt(values.length)
     values.foreach(v => out.writeFloat(v))
+  }
+
+  override def toString: String = values.mkString(";")
+
+  override def compareTo(o: VectorWritable): Int = {
+    val magnitude = (v: VectorWritable) => v.values.reduce((a, b) => math.pow(a, 2.0).toFloat * math.pow(b, 2.0).toFloat)
+    val x = magnitude(this)
+    val y = magnitude(o)
+    
+    if (x == y)
+      0
+    else if (x < y)
+      -1
+    else
+      1
   }
 }
