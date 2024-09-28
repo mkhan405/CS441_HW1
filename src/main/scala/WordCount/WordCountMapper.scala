@@ -26,7 +26,7 @@ object WordCountMapper:
       line.split(" ").foreach { token =>
         word.set(token)
         val encoded_token_list = encoding.encode(token).toArray.map(_.toString).toList
-        val encoded_token = encoded_token_list.reduce((a, b) => s"${a};${b}")
+        val encoded_token = encoded_token_list.mkString(";")
         textOut.set(s"1,${encoded_token}")
         context.write(word, textOut)
       }

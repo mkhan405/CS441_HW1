@@ -4,10 +4,10 @@ import org.apache.hadoop.fs.Path
 import org.apache.hadoop.conf.*
 import org.apache.hadoop.io.*
 import org.apache.hadoop.util.*
-import org.apache.hadoop.mapred.*
+import org.apache.hadoop.mapreduce.*
 
 import java.io.IOException
-import java.util
+import java.{util, lang}
 import scala.jdk.CollectionConverters.*
 
 import utils.encoding
@@ -22,12 +22,12 @@ object SlidingWindowMapper:
       window ++ List.fill(window_size - window.length)(pad_token.toFloat)
     ).toArray
 
-  class Map extends MapReduceBase with Mapper[LongWritable, Text, Text, VectorWritable]:
+  class Map extends Mapper[LongWritable, Text, Text, VectorWritable]:
     private val word = new Text()
     private val textOut = new Text()
 
     @throws[IOException]
-    override def map(key: LongWritable, value: Text, output: OutputCollector[Text, VectorWritable], reporter: Reporter): Unit =
+    override def map(key: LongWritable, value: Text, context: Mapper[LongWritable, Text, Text, VectorWritable]#Context): Unit =
       val conf = ConfigFactory.load()
       val window_size = conf.getInt("window-conf.size")
       val stride = conf.getInt("window-conf.stride")
@@ -37,9 +37,9 @@ object SlidingWindowMapper:
       // Generate token encodings
       val token_encodings = line.split(" ").flatMap((token) => encoding.encode(token).toArray)
       val samples = generate_samples(token_encodings, window_size, stride, 0)
-      samples.foreach(s => output.collect(value, new VectorWritable(s)))
+      samples.foreach(s => context.write(value, new VectorWritable(s)))
 
-  class Reduce extends MapReduceBase with Reducer[Text, VectorWritable, Text, NullWritable]:
-    override def reduce(key: Text, values: util.Iterator[VectorWritable], output: OutputCollector[Text, NullWritable],
-                        reporter: Reporter): Unit =
-      values.asScala.foreach(tokens => output.collect(new Text(tokens.values.map(_.toString).mkString(",")), null))
+  class Reduce extends Reducer[Text, VectorWritable, Text, NullWritable]:
+    override def reduce(key: Text, values: lang.Iterable[VectorWritable], context: Reducer[Text, VectorWritable,
+      Text, NullWritable]#Context): Unit =
+      values.asScala.foreach(tokens => context.write(new Text(tokens.values.map(_.toString).mkString(",")), null))

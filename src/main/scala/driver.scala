@@ -14,11 +14,12 @@ def doWordCount(conf: Job): Unit =
   job.setJobName("WordCount")
 
   val config = ConfigFactory.load()
-  val inputPath = config.getString("word-count-conf.input")
-  val outputPath = config.getString("word-count-conf.output")
+  val inputDir = config.getString("training-conf.input_dir")
+  val outputPath = config.getString("training-conf.word-count_output_dir")
 
   val fs: FileSystem  = FileSystem.get(conf.getConfiguration)
-  val finalOutputPath: Path = new Path(outputPath)
+  val finalInputDir: Path = new Path(inputDir)
+  val finalOutputDir: Path = new Path(outputPath)
 
   job.setOutputKeyClass(classOf[Text])
   job.setOutputValueClass(classOf[NullWritable])
@@ -31,20 +32,61 @@ def doWordCount(conf: Job): Unit =
 
   job.setInputFormatClass(classOf[TextInputFormat])
   job.setOutputFormatClass(classOf[TextOutputFormat[Text, NullWritable]])
-  // FileInputFormat.setInputPaths(job, new Path(input_path))
-  FileInputFormat.addInputPaths(job, inputPath)
-  FileOutputFormat.setOutputPath(job, finalOutputPath)
 
-  if (fs.exists(finalOutputPath)) {
-    fs.delete(finalOutputPath, true)
+//  FileInputFormat.addInputPaths(job, inputDir)
+  fs.listStatus(finalInputDir)
+    .filter(_.getPath.getName.startsWith("shard_"))
+    .foreach(file => FileInputFormat.addInputPath(job, file.getPath))
+
+  FileOutputFormat.setOutputPath(job, finalOutputDir)
+
+  if (fs.exists(finalOutputDir)) {
+    fs.delete(finalOutputDir, true)
+  }
+
+  job.waitForCompletion(true)
+
+def computeDataSamples(conf: Job): Unit =
+  val job: Job = Job.getInstance(conf.getConfiguration)
+  job.setJobName("DataSampleComputation")
+
+  val config = ConfigFactory.load()
+  val inputDir = config.getString("training-conf.input_dir")
+  val outputPath = config.getString("training-conf.data-sample_output_dir")
+
+  val fs: FileSystem  = FileSystem.get(conf.getConfiguration)
+  val finalInputDir: Path = new Path(inputDir)
+  val finalOutputDir: Path = new Path(outputPath)
+
+  job.setOutputKeyClass(classOf[Text])
+  job.setOutputValueClass(classOf[NullWritable])
+
+  job.setMapOutputKeyClass(classOf[Text])
+  job.setMapOutputValueClass(classOf[utils.VectorWritable])
+
+  job.setMapperClass(classOf[SlidingWindowMapper.Map])
+  job.setReducerClass(classOf[SlidingWindowMapper.Reduce])
+
+  job.setInputFormatClass(classOf[TextInputFormat])
+  job.setOutputFormatClass(classOf[TextOutputFormat[Text, NullWritable]])
+
+  //  FileInputFormat.addInputPaths(job, inputDir)
+  fs.listStatus(finalInputDir)
+    .filter(_.getPath.getName.startsWith("shard_"))
+    .foreach(file => FileInputFormat.addInputPath(job, file.getPath))
+
+  FileOutputFormat.setOutputPath(job, finalOutputDir)
+
+  if (fs.exists(finalOutputDir)) {
+    fs.delete(finalOutputDir, true)
   }
 
   job.waitForCompletion(true)
 
 @main def main() =
   val conf = new Configuration()
-  conf.set("mapreduce.job.maps", "1")
-  conf.set("mapreduce.job.reduces", "1")
+  conf.set("mapreduce.job.maps", "11")
+  conf.set("mapreduce.job.reduces", "11")
 
   val job = Job.getInstance(conf)
   val config = ConfigFactory.load()
@@ -53,6 +95,7 @@ def doWordCount(conf: Job): Unit =
 
   val numShards = shardFile(baseDir, inputFilename, 17800)
   doWordCount(job)
+  computeDataSamples(job)
 
   cleanupShards(baseDir, inputFilename)
 

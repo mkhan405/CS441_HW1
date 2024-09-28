@@ -16,7 +16,7 @@ object ShardDriver {
 
     using(new FileInputStream(inputFile)) { inputStream =>
       for (shardIndex <- 0 until numShards) {
-        val outputFilename = s"${filename}_shard_$shardIndex"
+        val outputFilename = s"shard_$shardIndex"
         val outputPath = Paths.get(baseDir, outputFilename)
 
         using(new FileOutputStream(outputPath.toFile)) { outputStream =>
@@ -37,7 +37,7 @@ object ShardDriver {
     if (!Files.isDirectory(directory))
         throw new IllegalArgumentException(s"Invalid directory: ${directory}")
 
-    val shardPrefix = s"${filename}_shard_"
+    val shardPrefix = s"shard_"
     Files.list(directory)
       .filter(path => path.getFileName.toString.startsWith(shardPrefix))
       .forEach(Files.delete)
