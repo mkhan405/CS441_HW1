@@ -68,6 +68,10 @@ def computeDataSamples(conf: Job): Unit =
   job.setMapperClass(classOf[SlidingWindowMapper.Map])
   job.setReducerClass(classOf[SlidingWindowReducer.Reduce])
 
+  job.getConfiguration.setInt("window_size", config.getInt("window-conf.size"))
+  job.getConfiguration.setInt("window_stride", config.getInt("window-conf.stride"))
+  job.getConfiguration.setInt("window_pad_token", config.getInt("window-conf.pad_token"))
+
   job.setInputFormatClass(classOf[TextInputFormat])
   job.setOutputFormatClass(classOf[TextOutputFormat[Text, NullWritable]])
 
@@ -116,19 +120,18 @@ def computeEmbeddings(conf: Job): Unit =
 
 
 @main def main(): Unit =
+  val config = ConfigFactory.load()
+  val numJobs = config.getInt("job-conf.num_jobs")
   val conf = new Configuration()
-  conf.set("mapreduce.job.maps", "11")
-  conf.set("mapreduce.job.reduces", "11")
+  conf.set("mapreduce.job.maps", s"${numJobs}")
+  conf.set("mapreduce.job.reduces", s"${numJobs}")
 
   val job = Job.getInstance(conf)
-  val config = ConfigFactory.load()
   val baseDir = config.getString("job-conf.base_dir")
   val inputFilename = config.getString("job-conf.input_filename")
-
-  val numShards = shardFile(baseDir, inputFilename, 17800)
+  shardFile(baseDir, inputFilename, numJobs)
   doWordCount(job)
   computeDataSamples(job)
   computeEmbeddings(job)
-
   cleanupShards(baseDir, inputFilename)
 

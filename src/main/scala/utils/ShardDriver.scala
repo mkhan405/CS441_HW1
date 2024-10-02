@@ -1,10 +1,11 @@
 package utils
 
 import java.nio.file.{Files, Paths}
-import java.io.{FileInputStream, FileOutputStream}
+import java.io.{FileInputStream, FileOutputStream, PrintWriter}
+import scala.io.Source
 
 object ShardDriver {
-  def shardFile(baseDir: String, filename: String, blockSize: Int): Int = {
+  def shardFile(baseDir: String, filename: String, numShards: Int): Unit = {
     val inputPath = Paths.get(baseDir, filename)
     val inputFile = inputPath.toFile
 
@@ -12,7 +13,8 @@ object ShardDriver {
       throw new IllegalArgumentException(s"Input file does not exist: $baseDir/$inputFile")
 
     val fileSize = inputFile.length()
-    val numShards = Math.ceil(fileSize.toDouble / blockSize).toInt
+    val blockSize = Math.ceil(fileSize / numShards).toInt
+//    val numShards = Math.ceil(fileSize.toDouble / blockSize).toInt
 
     using(new FileInputStream(inputFile)) { inputStream =>
       for (shardIndex <- 0 until numShards) {
@@ -29,7 +31,6 @@ object ShardDriver {
         }
       }
     }
-    numShards
   }
 
   def cleanupShards(baseDir: String, filename: String): Unit = {

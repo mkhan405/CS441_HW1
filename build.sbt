@@ -21,4 +21,6 @@ libraryDependencies += "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.23.1
 libraryDependencies += "com.typesafe" % "config" % "1.4.3"
 libraryDependencies += "com.knuddels" % "jtokkit" % "1.1.0"
 libraryDependencies += "org.deeplearning4j" % "deeplearning4j-core" % "1.0.0-M2.1"
+libraryDependencies += "org.deeplearning4j" % "deeplearning4j-nlp" % "0.9.1"
+libraryDependencies += "org.nd4j" % "nd4j-native" % "0.9.1"
 libraryDependencies += "com.typesafe" % "config" % "1.4.3"
