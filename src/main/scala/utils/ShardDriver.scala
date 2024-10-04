@@ -1,6 +1,10 @@
 package utils
 
+import org.apache.hadoop.conf.Configuration
+
 import java.nio.file.{Files, Paths}
+import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.hadoop.io.IOUtils
 import java.io.{FileInputStream, FileOutputStream, PrintWriter}
 import scala.io.Source
 
@@ -31,6 +35,27 @@ object ShardDriver {
         }
       }
     }
+  }
+
+  def merge(srcFS: FileSystem, srcDir: Path, dstFS: FileSystem, dstFile: Path,
+            deleteSource: Boolean, conf: Configuration): Boolean = {
+    if (srcFS.getFileStatus(srcDir).isDirectory) {
+      val outputFile = dstFS.create(dstFile)
+      try {
+        srcFS
+          .listStatus(srcDir)
+          .sortBy(_.getPath.getName)
+          .collect {
+            case status if status.isFile =>
+              val inputFile = srcFS.open(status.getPath)
+              try {IOUtils.copyBytes(inputFile, outputFile, conf, false)}
+              finally {inputFile.close()}
+          }
+        if (deleteSource) srcFS.delete(srcDir, true) else true
+      }
+    } else false
+
+
   }
 
   def cleanupShards(baseDir: String, filename: String): Unit = {

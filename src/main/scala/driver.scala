@@ -9,8 +9,10 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.mapreduce.lib.input.{FileInputFormat, TextInputFormat}
 import org.apache.hadoop.mapreduce.lib.output.{FileOutputFormat, TextOutputFormat}
 import com.typesafe.config.ConfigFactory
+import org.slf4j.{Logger, LoggerFactory}
 import utils.ShardDriver.*
 
+// TODO: Modify Word Count to Combine Files
 def doWordCount(conf: Job): Unit =
   val job: Job = Job.getInstance(conf.getConfiguration)
   job.setJobName("WordCount")
@@ -48,6 +50,7 @@ def doWordCount(conf: Job): Unit =
   job.waitForCompletion(true)
 
 def computeDataSamples(conf: Job): Unit =
+  val log: Logger = LoggerFactory.getLogger("Data Samples Job")
   val job: Job = Job.getInstance(conf.getConfiguration)
   job.setJobName("DataSampleComputation")
 
@@ -58,6 +61,8 @@ def computeDataSamples(conf: Job): Unit =
   val fs: FileSystem  = FileSystem.get(conf.getConfiguration)
   val finalInputDir: Path = new Path(inputDir)
   val finalOutputDir: Path = new Path(outputPath)
+  val tempOutputPath = outputPath + "_dir"
+  val tempOutputDir = new Path(tempOutputPath)
 
   job.setOutputKeyClass(classOf[Text])
   job.setOutputValueClass(classOf[NullWritable])
@@ -73,20 +78,24 @@ def computeDataSamples(conf: Job): Unit =
   job.getConfiguration.setInt("window_pad_token", config.getInt("window-conf.pad_token"))
 
   job.setInputFormatClass(classOf[TextInputFormat])
-  job.setOutputFormatClass(classOf[TextOutputFormat[Text, NullWritable]])
+  job.setOutputFormatClass(classOf[TextOutputFormat[Text, Text]])
 
   //  FileInputFormat.addInputPaths(job, inputDir)
   fs.listStatus(finalInputDir)
     .filter(_.getPath.getName.startsWith("shard_"))
     .foreach(file => FileInputFormat.addInputPath(job, file.getPath))
 
-  FileOutputFormat.setOutputPath(job, finalOutputDir)
+  FileOutputFormat.setOutputPath(job, tempOutputDir)
 
-  if (fs.exists(finalOutputDir)) {
+  if (job.waitForCompletion(true)) {
     fs.delete(finalOutputDir, true)
+    // Merge output files
+    merge(fs, tempOutputDir, fs, finalOutputDir, true, conf.getConfiguration)
+    log.info("Data Samples Computed and Merged")
+  } else {
+    log.error("Data samples job failed")
   }
 
-  job.waitForCompletion(true)
 
 def computeEmbeddings(conf: Job): Unit =
   val job: Job = Job.getInstance(conf.getConfiguration)
@@ -132,6 +141,6 @@ def computeEmbeddings(conf: Job): Unit =
   shardFile(baseDir, inputFilename, numJobs)
   doWordCount(job)
   computeDataSamples(job)
-  computeEmbeddings(job)
+  // computeEmbeddings(job)
   cleanupShards(baseDir, inputFilename)
 
