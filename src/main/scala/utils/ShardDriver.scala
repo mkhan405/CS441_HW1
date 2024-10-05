@@ -52,10 +52,8 @@ object ShardDriver {
               finally {inputFile.close()}
           }
         if (deleteSource) srcFS.delete(srcDir, true) else true
-      }
+      } finally { outputFile.close() }
     } else false
-
-
   }
 
   def cleanupShards(baseDir: String, filename: String): Unit = {

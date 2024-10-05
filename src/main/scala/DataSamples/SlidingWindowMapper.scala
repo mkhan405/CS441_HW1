@@ -20,7 +20,7 @@ object SlidingWindowMapper:
   private def generate_samples(tokens: Array[Int], window_size: Int, stride: Int,
                                pad_token: Int = 0): Array[Array[Float]] =
     tokens.sliding(window_size, stride).map(window => window.map(s => (s).toFloat)).map(window =>
-      window //++ List.fill(window_size - window.length)(pad_token.toFloat)
+      window ++ List.fill(window_size - window.length)(pad_token.toFloat)
     ).toArray
 
   class Map extends Mapper[LongWritable, Text, Text, VectorWritable]:
@@ -54,5 +54,7 @@ object SlidingWindowMapper:
       sentence_encodings.zipWithIndex.foreach((s, index) => {
         val samples = generate_samples(s, this.window_size, this.stride, this.pad_token)
         logger.info(s"Generated sliding window for offset ${key} in ${inputFileName}")
-        samples.foreach(sample => context.write(new Text(s"${inputFileName}-${key}-${index}"), new VectorWritable(sample)))
+        samples.zipWithIndex.foreach((sample, sample_index) => {
+          context.write(new Text(s"${inputFileName}-${key}-${index}-${sample_index}"), new VectorWritable(sample))
+        })
       })

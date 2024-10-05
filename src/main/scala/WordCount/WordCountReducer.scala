@@ -14,6 +14,7 @@ import utils.encoding
 
 object WordCountReducer:
   val logger: Logger = LoggerFactory.getLogger("WordCountReducer")
+  // TODO: Generate CSV File Format
   class Reduce extends Reducer[Text, Text, Text, Text]:
     override def reduce(key: Text, values: lang.Iterable[Text], context: Reducer[Text, Text, Text, Text]#Context): Unit =
       logger.info(s"Getting count for word: ${key}")
@@ -23,3 +24,4 @@ object WordCountReducer:
       val tokenIDs = metrics.head.last
       context.getCounter("stats","vocabSize").increment(tokenIDs.length)
       context.write(new Text(s"${key}"), new Text(s"${count},${tokenIDs}"))
+      logger.info(s"Wrote ${count},${tokenIDs} for ${key}")

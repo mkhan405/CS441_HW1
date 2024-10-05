@@ -18,5 +18,5 @@ object SlidingWindowReducer:
     override def reduce(key: Text, values: lang.Iterable[VectorWritable], context: Reducer[Text, VectorWritable,
       Text, Text]#Context): Unit =
       val sentences = values.asScala.toArray
-      val sentence_encodings = sentences.map(s => s.values.mkString(",")).mkString(":")
+      val sentence_encodings = sentences.map(s => s.values.mkString(" ")).head
       sentence_encodings.foreach(t => context.write(key, new Text(sentence_encodings)))
