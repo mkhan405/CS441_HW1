@@ -15,7 +15,7 @@ import java.{lang, util}
 import scala.jdk.CollectionConverters.*
 
 object SlidingWindowMapper:
-  val logger: Logger = LoggerFactory.getLogger("Mapper")
+  val logger: Logger = LoggerFactory.getLogger("SlidingWindowMapper")
 
   private def generate_samples(tokens: Array[Int], window_size: Int, stride: Int,
                                pad_token: Int = 0): Array[Array[Float]] =
@@ -49,13 +49,10 @@ object SlidingWindowMapper:
       val line: String = value.toString
       // Generate token encodings
       val sentences = line.split(".?!")
+      logger.info(s"Computing BPE for offset ${key} in ${inputFileName}")
       val sentence_encodings = sentences.map(s => s.split(" ").flatMap((token) => encoding.encode(token).toArray))
       sentence_encodings.zipWithIndex.foreach((s, index) => {
         val samples = generate_samples(s, this.window_size, this.stride, this.pad_token)
+        logger.info(s"Generated sliding window for offset ${key} in ${inputFileName}")
         samples.foreach(sample => context.write(new Text(s"${inputFileName}-${key}-${index}"), new VectorWritable(sample)))
       })
-
-      //val token_encodings = line.split(" ").flatMap((token) => encoding.encode(token).toArray)
-
-      //val samples = generate_samples(token_encodings, window_size, stride, 0)
-      //samples.foreach(s => context.write(value, new VectorWritable(s)))

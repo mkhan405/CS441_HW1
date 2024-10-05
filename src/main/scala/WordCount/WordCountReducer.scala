@@ -14,10 +14,12 @@ import utils.encoding
 
 object WordCountReducer:
   val logger: Logger = LoggerFactory.getLogger("WordCountReducer")
-  class Reduce extends Reducer[Text, Text, Text, NullWritable]:
-    override def reduce(key: Text, values: lang.Iterable[Text], context: Reducer[Text, Text, Text, NullWritable]#Context): Unit =
+  class Reduce extends Reducer[Text, Text, Text, Text]:
+    override def reduce(key: Text, values: lang.Iterable[Text], context: Reducer[Text, Text, Text, Text]#Context): Unit =
+      logger.info(s"Getting count for word: ${key}")
       val records = values.asScala.toList
       val metrics = records.map(_.toString.split(",").toList)
       val count = metrics.map(_.head.toInt).sum
       val tokenIDs = metrics.head.last
-      context.write(new Text(s"${key},${count},${tokenIDs}"), NullWritable.get())
+      context.getCounter("stats","vocabSize").increment(tokenIDs.length)
+      context.write(new Text(s"${key}"), new Text(s"${count},${tokenIDs}"))

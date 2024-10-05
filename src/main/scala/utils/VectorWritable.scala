@@ -22,16 +22,24 @@ class VectorWritable(var values: Array[Float]) extends Writable, WritableCompara
     Array.copy(v, startPos, values, startPos, (if (endPos != -1) endPos else defaultEndPos))
   }
 
-  def add(v: VectorWritable): Unit = {
-    if (this.values == null) {
-      values = new Array[Float](v.values.length)
-      Array.copy(v.values, 0, this.values, 0, v.values.length)
+  def add(v: VectorWritable): VectorWritable = {
+    val resultValues = if (this.values == null) {
+      val newValues = new Array[Float](v.values.length)
+      Array.copy(v.values, 0, newValues, 0, v.values.length)
+      newValues
     } else if (v.values.length == values.length) {
-      values = values.zip(v.values).map((a, b) => a + b)
+      values.zip(v.values).map { case (a, b) => a + b }
+    } else {
+      values // Return original values if lengths don't match
     }
+
+    new VectorWritable(resultValues)
   }
 
-  def divide(c: Int): Unit = values = values.map(v => v / c)
+  def divide(c: Int): VectorWritable = {
+    val resultValues = values.map(v => v / c)
+    new VectorWritable(resultValues)
+  }
 
   override def readFields(in: DataInput): Unit = {
     val size: Int = in.readInt()

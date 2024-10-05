@@ -13,17 +13,12 @@ import java.{lang, util}
 import scala.jdk.CollectionConverters.*
 
 object EmbeddingReducer:
-  class Reduce extends Reducer[VectorWritable, VectorWritable, VectorWritable, VectorWritable]:
+  class Reduce extends Reducer[Text, VectorWritable, Text, VectorWritable]:
     @throws[IOException]
-    override def reduce(key: VectorWritable, values: lang.Iterable[VectorWritable], context: Reducer[VectorWritable,
-      VectorWritable, VectorWritable, VectorWritable]#Context): Unit = {
-      val valuesScala = values.asScala
-      if (valuesScala.nonEmpty) {
-        val firstValue = valuesScala.head
-        context.write(firstValue, firstValue)
-      } else {
-        // Log a warning or handle the case where there are no values
-        context.getCounter("Reducer", "EmptyValues").increment(1)
-      }
+    override def reduce(key: Text, values: lang.Iterable[VectorWritable], context: Reducer[Text,
+      VectorWritable, Text, VectorWritable]#Context): Unit = {
+      val vectors = values.asScala.toList
+      val sumOfVectors = vectors.reduce((a, b) => a.add(b))
+      context.write(key, sumOfVectors.divide(vectors.length))
     }
 

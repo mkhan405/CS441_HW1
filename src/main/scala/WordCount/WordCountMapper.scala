@@ -14,7 +14,7 @@ import scala.jdk.CollectionConverters.*
 import utils.encoding
 
 object WordCountMapper:
-  val logger: Logger = LoggerFactory.getLogger("Mapper")
+  val logger: Logger = LoggerFactory.getLogger("WordCountMapper")
   class Map extends Mapper[LongWritable, Text, Text, Text]:
     private final val one = new IntWritable(1)
     private val word = new Text()
@@ -24,6 +24,7 @@ object WordCountMapper:
     override def map(key: LongWritable, value: Text, context: Mapper[LongWritable, Text, Text, Text]#Context): Unit =
       val line: String = value.toString
       line.split(" ").foreach { token =>
+        logger.info(s"Computing BPE for ${token}")
         word.set(token)
         val encoded_token_list = encoding.encode(token).toArray.map(_.toString).toList
         val encoded_token = encoded_token_list.mkString(";")

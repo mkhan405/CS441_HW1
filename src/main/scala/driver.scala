@@ -11,22 +11,48 @@ import org.apache.hadoop.mapreduce.lib.output.{FileOutputFormat, TextOutputForma
 import com.typesafe.config.ConfigFactory
 import org.slf4j.{Logger, LoggerFactory}
 import utils.ShardDriver.*
+import utils.VocabExtractor.*
+import java.net.URI
 
-// TODO: Modify Word Count to Combine Files
-def doWordCount(conf: Job): Unit =
+def runJob(job: Job, jobName: String, inputDir: String, outputDir: String): Boolean = {
+  // Setup Logger and
+  val log: Logger = LoggerFactory.getLogger(s"${jobName.capitalize} Logger")
+  job.setJobName(jobName)
+
+  val fs: FileSystem = FileSystem.get(job.getConfiguration)
+  val finalInputDir: Path = new Path(inputDir)
+  val finalOutputDir: Path = new Path(outputDir)
+  val tempOutputPath = outputDir + "_dir"
+  val tempOutputDir = new Path(tempOutputPath)
+
+  // Setup Input File Paths
+  fs.listStatus(finalInputDir)
+    .filter(_.getPath.getName.startsWith("shard_"))
+    .foreach(file => FileInputFormat.addInputPath(job, file.getPath))
+
+  // Setup Output File Path
+  FileOutputFormat.setOutputPath(job, tempOutputDir)
+  if (job.waitForCompletion(true)) {
+    fs.delete(finalOutputDir, true)
+    print(merge(fs, tempOutputDir, fs, finalOutputDir, true, job.getConfiguration))
+    log.info(s"${jobName} completed")
+    true
+  } else {
+    log.error(s"${jobName} failed")
+    false
+  }
+}
+
+def doWordCount(conf: Job): Long =
   val job: Job = Job.getInstance(conf.getConfiguration)
-  job.setJobName("WordCount")
 
   val config = ConfigFactory.load()
   val inputDir = config.getString("training-conf.input_dir")
   val outputPath = config.getString("training-conf.word-count_output_dir")
-
-  val fs: FileSystem  = FileSystem.get(conf.getConfiguration)
-  val finalInputDir: Path = new Path(inputDir)
-  val finalOutputDir: Path = new Path(outputPath)
+  val vocabPath = config.getString("training-conf.vocab_output_dir")
 
   job.setOutputKeyClass(classOf[Text])
-  job.setOutputValueClass(classOf[NullWritable])
+  job.setOutputValueClass(classOf[Text])
 
   job.setMapOutputKeyClass(classOf[Text])
   job.setMapOutputValueClass(classOf[Text])
@@ -35,34 +61,21 @@ def doWordCount(conf: Job): Unit =
   job.setReducerClass(classOf[WordCountReducer.Reduce])
 
   job.setInputFormatClass(classOf[TextInputFormat])
-  job.setOutputFormatClass(classOf[TextOutputFormat[Text, NullWritable]])
+  job.setOutputFormatClass(classOf[TextOutputFormat[Text, Text]])
 
-  fs.listStatus(finalInputDir)
-    .filter(_.getPath.getName.startsWith("shard_"))
-    .foreach(file => FileInputFormat.addInputPath(job, file.getPath))
-
-  FileOutputFormat.setOutputPath(job, finalOutputDir)
-
-  if (fs.exists(finalOutputDir)) {
-    fs.delete(finalOutputDir, true)
-  }
-
-  job.waitForCompletion(true)
+  if (runJob(job, "Word Count", inputDir, outputPath))
+    // Extract vocabulary from computed results
+    extractor(outputPath, vocabPath)
+    job.getCounters.findCounter("stats", "vocabSize").getValue
+  else
+    0
 
 def computeDataSamples(conf: Job): Unit =
-  val log: Logger = LoggerFactory.getLogger("Data Samples Job")
   val job: Job = Job.getInstance(conf.getConfiguration)
-  job.setJobName("DataSampleComputation")
 
   val config = ConfigFactory.load()
   val inputDir = config.getString("training-conf.input_dir")
   val outputPath = config.getString("training-conf.data-sample_output_dir")
-
-  val fs: FileSystem  = FileSystem.get(conf.getConfiguration)
-  val finalInputDir: Path = new Path(inputDir)
-  val finalOutputDir: Path = new Path(outputPath)
-  val tempOutputPath = outputPath + "_dir"
-  val tempOutputDir = new Path(tempOutputPath)
 
   job.setOutputKeyClass(classOf[Text])
   job.setOutputValueClass(classOf[NullWritable])
@@ -80,67 +93,62 @@ def computeDataSamples(conf: Job): Unit =
   job.setInputFormatClass(classOf[TextInputFormat])
   job.setOutputFormatClass(classOf[TextOutputFormat[Text, Text]])
 
-  //  FileInputFormat.addInputPaths(job, inputDir)
-  fs.listStatus(finalInputDir)
-    .filter(_.getPath.getName.startsWith("shard_"))
-    .foreach(file => FileInputFormat.addInputPath(job, file.getPath))
-
-  FileOutputFormat.setOutputPath(job, tempOutputDir)
-
-  if (job.waitForCompletion(true)) {
-    fs.delete(finalOutputDir, true)
-    // Merge output files
-    merge(fs, tempOutputDir, fs, finalOutputDir, true, conf.getConfiguration)
-    log.info("Data Samples Computed and Merged")
-  } else {
-    log.error("Data samples job failed")
-  }
+  runJob(job, "Data Samples", inputDir, outputPath)
 
 
-def computeEmbeddings(conf: Job): Unit =
+def computeEmbeddings(conf: Job, vocabSize: Long, numJobs: Int): Unit =
   val job: Job = Job.getInstance(conf.getConfiguration)
-  job.setJobName("EmbeddingsCompute")
 
   val config = ConfigFactory.load()
-  val inputPath = config.getString("training-conf.data-sample_output_dir")
+  // val inputPath = config.getString("training-conf.data-sample_output_dir")
   val outputPath = config.getString("training-conf.embedding_output_dir")
+  val vocabPath = config.getString("training-conf.vocab_output_dir")
+  val baseDir = config.getString("job-conf.base_output_dir")
 
-  val fs: FileSystem = FileSystem.get(conf.getConfiguration)
-  val finalInputDir: Path = new Path(inputPath)
-  val finalOutputDir: Path = new Path(outputPath)
+  shardFile(baseDir, "samples", numJobs)
 
-  job.setOutputKeyClass(classOf[utils.VectorWritable])
+  job.getConfiguration.setLong("vocabSize", vocabSize)
+  job.getConfiguration.setInt("epochs", config.getInt("training-conf.epochs"))
+  job.getConfiguration.setInt("embeddingDim", config.getInt("training-conf.embeddingDim"))
+
+  job.setOutputKeyClass(classOf[Text])
   job.setOutputValueClass(classOf[utils.VectorWritable])
 
   job.setMapperClass(classOf[Training.EmbeddingMapper.Map])
   job.setReducerClass(classOf[Training.EmbeddingReducer.Reduce])
 
   job.setInputFormatClass(classOf[TextInputFormat])
-  job.setOutputFormatClass(classOf[TextOutputFormat[utils.VectorWritable, utils.VectorWritable]])
+  job.setOutputFormatClass(classOf[TextOutputFormat[Text, utils.VectorWritable]])
+  job.addCacheFile(new URI(vocabPath))
 
-  FileInputFormat.setInputPaths(job, inputPath)
-  FileOutputFormat.setOutputPath(job, finalOutputDir)
-
-  if (fs.exists(finalOutputDir)) {
-    fs.delete(finalOutputDir, true)
+  try {
+    runJob(job, "EmbeddingsCompute", baseDir, outputPath)
+  } finally {
+    cleanupShards(baseDir, "samples")
   }
-
-  job.waitForCompletion(true)
-
 
 @main def main(): Unit =
   val config = ConfigFactory.load()
-  val numJobs = config.getInt("job-conf.num_jobs")
-  val conf = new Configuration()
-  conf.set("mapreduce.job.maps", s"${numJobs}")
-  conf.set("mapreduce.job.reduces", s"${numJobs}")
-
-  val job = Job.getInstance(conf)
   val baseDir = config.getString("job-conf.base_dir")
   val inputFilename = config.getString("job-conf.input_filename")
-  shardFile(baseDir, inputFilename, numJobs)
-  doWordCount(job)
-  computeDataSamples(job)
-  // computeEmbeddings(job)
-  cleanupShards(baseDir, inputFilename)
+
+  try {
+    val numJobs = config.getInt("job-conf.num_jobs")
+    val conf = new Configuration()
+    conf.set("mapreduce.job.maps", s"${numJobs}")
+    conf.set("mapreduce.job.reduces", s"${numJobs}")
+
+    val job = Job.getInstance(conf)
+
+    shardFile(baseDir, inputFilename, numJobs)
+    val vocabSize = doWordCount(job)
+
+    if (vocabSize == 0)
+      return
+
+    computeDataSamples(job)
+    computeEmbeddings(job, vocabSize, numJobs)
+  } finally {
+    cleanupShards(baseDir, inputFilename)
+  }
 

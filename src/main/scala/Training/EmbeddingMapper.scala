@@ -3,32 +3,38 @@ package Training
 import org.apache.hadoop.conf.*
 import org.apache.hadoop.io.*
 import org.apache.hadoop.mapreduce.*
+import org.apache.hadoop.mapreduce.lib.input.FileSplit
 import org.slf4j.{Logger, LoggerFactory}
 import org.deeplearning4j.models.word2vec
-import org.deeplearning4j.nn.conf.layers.EmbeddingLayer
+import org.deeplearning4j.nn.conf.layers.{EmbeddingLayer, OutputLayer}
 import org.deeplearning4j.nn.conf.{MultiLayerConfiguration, NeuralNetConfiguration}
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork
 import org.deeplearning4j.text.tokenization.tokenizerfactory.{DefaultTokenizerFactory, TokenizerFactory}
 import org.nd4j.linalg.activations.Activation
 import org.nd4j.linalg.api.ndarray.INDArray
 import org.nd4j.linalg.factory.Nd4j
+import org.nd4j.linalg.lossfunctions.LossFunctions
 import utils.{VectorWritable, encoding}
 
-import java.io.{File, IOException}
+import java.io.{BufferedReader, File, FileReader, IOException}
 import java.{lang, util}
+import scala.collection.mutable.ListBuffer
 import scala.jdk.CollectionConverters.*
 
 object EmbeddingMapper:
-  class Map extends Mapper[LongWritable, Text, VectorWritable, VectorWritable]:
+  class Map extends Mapper[LongWritable, Text, Text, VectorWritable]:
     private val runtime: Runtime = Runtime.getRuntime
     private val log: Logger = LoggerFactory.getLogger("EmbeddingMapper")
     // Configuration parameters to be set
-    private var (vocabSize, embeddingDim, epochs) = (0,0,0)
+    private var (embeddingDim, epochs) = (0,0)
+    private var vocabSize: Long = 0
     // Embedding Model Instance
     private var model: MultiLayerNetwork = null
+    // Input Shard File Name
+    private var inputFilename = ""
 
     @throws[IOException]
-    override def setup(context: Mapper[LongWritable, Text, VectorWritable, VectorWritable]#Context): Unit = {
+    override def setup(context: Mapper[LongWritable, Text, Text, VectorWritable]#Context): Unit = {
       log.info("Entered setup")
       log.info(s"Runtime max memory: ${runtime.maxMemory()}")
       log.info(s"Runtime free memory: ${runtime.freeMemory()}")
@@ -36,9 +42,13 @@ object EmbeddingMapper:
       log.info(s"Runtime used memory: ${runtime.totalMemory() - runtime.freeMemory()}")
       log.info(s"Runtime used memory = Runtime total memory - Runtime free memory")
 
+      val fileSplit = context.getInputSplit.asInstanceOf[FileSplit]
+      inputFilename = fileSplit.getPath.getName
+      log.info(s"Processing file: ${inputFilename}")
+
       log.info("Retrieving configuration parameters")
       val conf: Configuration = context.getConfiguration
-      vocabSize = conf.getInt("vocabSize", 10)
+      vocabSize = conf.getLong("vocabSize", 10)
       embeddingDim = conf.getInt("embeddingDim", 500)
       epochs = conf.getInt("epochs", 100)
 
@@ -51,6 +61,10 @@ object EmbeddingMapper:
           .nOut(embeddingDim)
           .activation(Activation.IDENTITY)
           .build())
+        .layer(new OutputLayer.Builder(LossFunctions.LossFunction.NEGATIVELOGLIKELIHOOD)
+          .nOut(vocabSize)
+          .activation(Activation.SOFTMAX)
+          .build())
         .build()
 
       // Initialize model
@@ -60,9 +74,11 @@ object EmbeddingMapper:
     }
 
     @throws[IOException]
-    override def map(key: LongWritable, value: Text, context: Mapper[LongWritable, Text, VectorWritable, VectorWritable]#Context): Unit = {
-      val sentences = value.toString.split(":")
-      val tokenized_sentences = sentences.map(s => s.split(",").map(t => t.toFloat))
+    override def map(key: LongWritable, value: Text, context: Mapper[LongWritable, Text, Text,
+      VectorWritable]#Context): Unit = {
+      val sentenceInput = value.toString.split("\t").last
+      val sentences = sentenceInput.split(":")
+      val tokenized_sentences = sentences.map(s => s.split(";").map(t => t.toFloat))
       // Generate pairwise mappings to get input/output features (e.g. (tokenized_sentences[0], tokenized_sentences[1])
       // (tokenized_sentences[1], tokenized_sentences[2])
       log.info("Extracting input/output features")
@@ -79,8 +95,42 @@ object EmbeddingMapper:
     }
 
     @throws[IOException]
-    override def cleanup(context: Mapper[LongWritable, Text, VectorWritable, VectorWritable]#Context): Unit = {
+    override def cleanup(context: Mapper[LongWritable, Text, Text, VectorWritable]#Context): Unit = {
       log.info("Model training completed")
-      // TODO: Figure out how to get vocabulary
+      log.info("Starting Token Embedding Computation")
+      val cachedFiles = context.getCacheFiles
+      if (cachedFiles != null && cachedFiles.nonEmpty) {
+        val vocabFile = cachedFiles.find(_.getPath.contains("vocab")).get
+        log.info(s"Reading Vocabulary File at ${vocabFile.getPath}")
 
+        val reader = new BufferedReader(new FileReader(vocabFile.getPath))
+
+        try {
+          // Reading over file line-by-line using while loop
+          var word = reader.readLine()
+          while (word != null) {
+            // Generate BPE encoding
+            val tokenized_word = word.split(" ").flatMap(w => utils.encoding.encode(w).toArray.map(_.toFloat))
+            log.debug(tokenized_word.mkString(" "))
+            try {
+              // Get Embedding Prediction
+              val embedding = model.predict(Nd4j.create(tokenized_word)).map(_.toFloat)
+              // Send to reducer
+              context.write(new Text(word), new VectorWritable(embedding))
+            } catch {
+              case e: Exception =>
+                log.error(s"Error processing word '$word': ${e.getMessage}")
+            } finally {
+              // Grab next word in vocabulary
+              word = reader.readLine()
+            }
+          }
+          log.info(s"Embeddings generated for shard: ${inputFilename}")
+        } finally {
+          reader.close()
+        }
+
+      } else {
+        log.error("No cache files found")
+      }
     }
