@@ -85,10 +85,40 @@ In this case:
 
 ### Computing Sliding Window Pairs
 
-With statistics of the word corupus computed, we need to compute the sliding window data samples for the text corpus. The Mapper still utilizes the `TextInputFormat` input file format, and is given the `LongWritable` key and `Text` value containing the line data. First, the input is split by whitespace and the BPE's are then generated:
+With statistics of the word corupus computed, we need to compute the sliding window data samples for the text corpus. The Mapper still utilizes the `TextInputFormat` input file format, and is given the `LongWritable` key and `Text` value containing the line data. First, the sentences are split by punctuation characters and each sentence is then split by whitespace characters. Then, each word is converted to it's BPE token, leading to the following result:
 
 ```
-hello world this is a test
--> ["hello", "world", "this", "is", "a", "test"]
--> [101.0, 202.0, 303.0, 301.0, 202.0]
+hello world. This is a test.
+-> ["hello world", "This is a test"]
+-> [["hello", "world"], ["This", "is", "a", "test"]]
+-> [[101.0, 202.0], [303.0, 301.0, 202.0, 404.0]]
 ```
+
+Then, for this sequence, sliding window pairs are computed based on the window size and stride. The window size and stride can be specified in the `application.conf` file under the `training-conf` section. With a window size of 10 and stride 2, these are the samples that would be generated
+
+```
+    [101.0, 202.0, 303.0, 301.0, 202.0] ->
+    [101.0, 202.0, 303.0, 301.0, 202.0, 0, 0, 0, 0, 0],
+    [303.0, 301.0, 202.0, 0, 0, 0, 0, 0, 0, 0],
+    [202.0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+```
+The 0s are the padidng token that is inserted when the size of the generated window is shorter than the `window_size` in `application.conf`.
+
+Each of these samples is then sent to the reducer with the following key-value pair: `<shard_filename>-<LongWritableKey>-<index>-<sample_index>`. The reason for this is:
+- The samples in the reducer will be ordered by shard
+- The samples will be ordered by their order in the respective shard
+- The samples will be ordered by which sentence they were in their line (e.g. 1st, 2nd, 3rd sentence)
+- The samples will finally be ordered by the sample index (e.g. 1st, 2nd, 3rd sample)
+
+This will be necessary in maintaining the same relative order as in the original text, which will be vital for the training phase.
+
+The reducer then receives the following set: `<<shard_filename>-<LongWritableKey>-<index>-<sample_index>, [[101.0, 202.0, 303.0, 301.0, 202.0]]>`. Although the reducer will receive a list of sliding window samples, since each mapper is only assigned one shard, the sample with this particular key will only appear once and can be written straight to the output file. The result is then a file with the following format:
+
+```
+shard_0-0-0-1	438.0;3055.0;1962.0;82.0;98148.0;48210.0;4065.0;1527.0;33169.0;2940.0
+shard_0-145-0-1	11099.0;92204.0;15357.0;811.0;1527.0;15357.0;1105.0;258.0;21470.0;33169.0
+shard_0-255-0-1	548.0;911.0;349.0;3725.0;55674.0;11.0;8248.0;906.0;34360.0;7072.0
+```
+
+
