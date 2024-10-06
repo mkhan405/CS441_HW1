@@ -24,6 +24,9 @@
 - Navigate to `Build > Build Project` to build the project and install relevant dependencies
 - Go to `src/main/scala/com/mapreduce/task/Driver` and run the `main` function to start the program
 
+## Video Discussion Link
+Youtube:
+
 ## Project Implementation
 
 ### Sharding the Dataset
