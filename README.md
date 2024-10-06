@@ -25,7 +25,7 @@
 - Go to `src/main/scala/com/mapreduce/task/Driver` and run the `main` function to start the program
 
 ## Video Discussion Link
-Youtube:
+Youtube: https://youtu.be/jtpDMff2-yk
 
 ## Project Implementation
 
