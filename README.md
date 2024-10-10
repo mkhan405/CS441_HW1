@@ -26,6 +26,7 @@
 
 ## Video Discussion Link
 Youtube: https://youtu.be/jtpDMff2-yk
+Google Drive (Updated Submission Video with EMR Deployment): https://drive.google.com/file/d/1gSJKVY7G5vdnmj_QefTXgl_ynsMzo5jd/view
 
 ## Project Implementation
 
