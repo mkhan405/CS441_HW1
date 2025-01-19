@@ -8,6 +8,7 @@
 
 ## Further Reading
 Apache Spark Implementation: https://github.com/mkhan405/CS441_HW2
+
 Finch/gRPC Server Implementation: https://github.com/mkhan405/CS441_HW3
 
 ## Prerequisites
