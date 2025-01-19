@@ -6,6 +6,10 @@
 - UIN: 667707825
 - UIC Email: mkhan405@uic.edu
 
+## Further Reading
+Apache Spark Implementation: https://github.com/mkhan405/CS441_HW2
+Finch/gRPC Server Implementation: https://github.com/mkhan405/CS441_HW3
+
 ## Prerequisites
 - Ensure Scala 3.3.3 is installed
 - Ensure Apache Hadoop (v. 3.3.6) is running on your system 
